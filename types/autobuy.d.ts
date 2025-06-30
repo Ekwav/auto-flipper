@@ -34,6 +34,14 @@ interface MyBot extends Bot {
     state?: 'purchasing' | 'selling' | 'claiming' | 'gracePeriod' | 'runningSequence'
     lastViewAuctionCommandForPurchase?: string
     privacySettings?: any
+    smoothLook?(
+      targetYaw: number,
+      targetPitch: number,
+      duration?: number,
+      steps?: number,
+      jitterAmount?: number,
+      headBobbing?: boolean
+    ): void;
 }
 
 interface FlipWhitelistedData {

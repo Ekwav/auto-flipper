@@ -13,9 +13,15 @@ import { getSessionId } from './coflSessionManager'
 import { sendWebhookInitialized } from './webhookHandler'
 import { handleCommand, setupConsoleInterface } from './consoleHandler'
 import { initAFKHandler, tryToTeleportToIsland } from './AFKHandler'
+import { pathfinder, Movements, goals } from 'mineflayer-pathfinder'
+import { Movement } from 'mineflayer-movement'
+import injectSmoothLook from './smoothlook';
+
 import { runSequence } from './sequenceRunner'
+import { Vec3 } from 'vec3'
 const WebSocket = require('ws')
 var prompt = require('prompt-sync')()
+const movement = require("mineflayer-movement")
 initConfigHelper()
 initLogger()
 const version = 'af-2.0.0'
@@ -29,12 +35,15 @@ if (!ingameName) {
 
 log(`Starting BAF v${version} for ${ingameName}`, 'info')
 const bot: MyBot = createBot({
-    username: ingameName,
-    auth: 'microsoft',
-    logErrors: true,
+    username: "Hello_world",
     version: '1.8.9',
-    host: 'mc.hypixel.net'
+    port: 35345,
+    host: 'localhost'
 })
+
+injectSmoothLook(bot);
+bot.loadPlugin(pathfinder)
+bot.loadPlugin(movement.plugin)
 
 bot.setMaxListeners(0)
 
@@ -44,12 +53,55 @@ createFastWindowClicker(bot._client)
 // Log packets
 //addLoggerToClientWriteFunction(bot._client)
 
-bot.on('kicked', (reason,_)=>log(reason, 'warn'))
+bot.on('kicked', (reason, _) => log(reason, 'warn'))
 bot.on('error', log)
 
-bot.once('login', () => {
+
+
+bot.once('login', async () => {
     log(`Logged in as ${bot.username}`)
     connectWebsocket()
+
+    bot.inventory.on('updateSlot', (slot, oldItem, newItem) => {
+        if (newItem)
+            console.log(`Slot ${slot} updated: ${removeMinecraftColorCodes(newItem?.name)}`);
+    })
+    const { Default } = bot.movement.goals
+    bot.movement.setGoal(Default)
+    // set control states
+    bot.setControlState("forward", true)
+    bot.setControlState("sprint", true)
+    bot.setControlState("jump", true)
+    const defaultMove = new Movements(bot)
+
+    defaultMove.allow1by1towers = false // Do not build 1x1 towers when going up
+    defaultMove.canDig = false // Disable breaking of blocks when pathing 
+    bot.pathfinder.setMovements(defaultMove)
+
+    bot.on("physicsTick", function tick() {
+        const entity = bot.nearestEntity(entity => entity.type === "player")
+        if (entity) {
+            // set the proximity target to the nearest entity
+            bot.movement.heuristic.get('proximity')
+                .target(entity.position)
+            // move towards the nearest entity
+            const yaw = bot.movement.getYaw(240, 15, 1)
+            const pitch = bot.movement.(240, 15, 1)
+            bot.movement.steer(yaw, pitch)
+            bot.movement.steer(yaw)
+        }
+    })
+
+    /*bot.pathfinder.setGoal(new goals.GoalBlock(-33.3, 71, -75.34), true)
+
+    console.log('Setting goal to -33.3, 71, -75.34')
+    bot.on('goal_reached', () => {
+        console.log('Reached goal block')
+        bot.pathfinder.setGoal(new goals.GoalBlock(-3, 70, -70), true)
+    })
+    await sleep(5000);
+
+    bot.pathfinder.setGoal(new goals.GoalBlock(-3, 70, -70), true)*/
     bot._client.on('packet', async function (packet, packetMeta) {
         if (packetMeta.name.includes('disconnect')) {
             let wss = await getCurrentWebsocket()
@@ -72,6 +124,53 @@ bot.once('spawn', async () => {
     bot.on('scoreboardTitleChanged', onScoreboardChanged)
     registerIngameMessageHandler(bot)
 })
+
+function smoothLook(bot, targetYaw, targetPitch, duration = 300, steps = 10) {
+    const currentYaw = bot.entity.yaw;
+    const currentPitch = bot.entity.pitch;
+
+    const yawStep = (targetYaw - currentYaw) / steps;
+    const pitchStep = (targetPitch - currentPitch) / steps;
+
+    let step = 0;
+
+    const interval = setInterval(() => {
+        if (step >= steps) return clearInterval(interval);
+
+        const newYaw = currentYaw + yawStep * step;
+        const newPitch = currentPitch + pitchStep * step;
+
+        bot.look(newYaw, newPitch, true);
+        step++;
+    }, duration / steps);
+}
+
+function getYawAndPitchToTarget(bot: MyBot, target: Vec3): { yaw: number, pitch: number } {
+  const dx = target.x - bot.entity.position.x;
+  const dz = target.z - bot.entity.position.z;
+  const dy = target.y - bot.entity.position.y;
+
+  const yaw = Math.atan2(dz, dx); // Calculate the yaw
+  const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)); // Calculate the pitch
+
+  return { yaw, pitch };
+}
+
+// Function to move and look towards a target position
+async function moveToCoordinates(bot: MyBot, target: Vec3): Promise<void> {
+  const { yaw, pitch } = getYawAndPitchToTarget(bot, target);
+
+  // First, smoothly rotate the bot to face the target
+  await bot.smoothLook(yaw, pitch, 1, 10, 0.05, true); // Adjust jitterAmount and headBobbing as needed
+
+  // Then, move towards the target position
+  bot.pathfinder.setGoal(new bot.pathfinder.goals.GoalNear(target.x, target.y, target.z, 1)); // GoalNear: 1 block proximity
+
+  // You can use bot.pathfinder to navigate if needed, or directly walk towards the target if it's a simple move
+  bot.on('goal_reached', () => {
+    console.log('Bot has reached the target position!');
+  });
+}
 
 function connectWebsocket(url: string = getConfigProperty('WEBSOCKET_URL')) {
     log(`Called connectWebsocket for ${url}`)
@@ -216,7 +315,7 @@ async function onScoreboardChanged() {
 }
 
 export function changeWebsocketURL(newURL: string) {
-    _websocket.onclose = () => {}
+    _websocket.onclose = () => { }
     _websocket.close()
     if (_websocket.readyState === WebSocket.CONNECTING || _websocket.readyState === WebSocket.CLOSING) {
         setTimeout(() => {
