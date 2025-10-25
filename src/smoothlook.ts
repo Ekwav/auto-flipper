@@ -65,7 +65,7 @@ export default function injectSmoothLook(bot: MyBot): void {
     headBobbing: boolean = true
   ): Promise<void> => {
     return new Promise<void>((resolve) => {
-      bot.smoothLook(yaw, pitch, 300, 10, jitterAmount, headBobbing);
+      bot.smoothLook(yaw, pitch, 100, 10, jitterAmount, headBobbing);
       resolve(); // Resolve the promise after the smooth look is completed
     });
   };

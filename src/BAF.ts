@@ -14,14 +14,19 @@ import { sendWebhookInitialized } from './webhookHandler'
 import { handleCommand, setupConsoleInterface } from './consoleHandler'
 import { initAFKHandler, tryToTeleportToIsland } from './AFKHandler'
 import { pathfinder, Movements, goals } from 'mineflayer-pathfinder'
+import { createMouse } from 'mineflayer-mouse';
 import { Movement } from 'mineflayer-movement'
 import injectSmoothLook from './smoothlook';
+import { SmoothLook } from '@nxg-org/mineflayer-smooth-look/lib/smoothLook'
+
 
 import { runSequence } from './sequenceRunner'
 import { Vec3 } from 'vec3'
 const WebSocket = require('ws')
+
 var prompt = require('prompt-sync')()
 const movement = require("mineflayer-movement")
+const { loader } = require("@nxg-org/mineflayer-smooth-look");
 initConfigHelper()
 initLogger()
 const version = 'af-2.0.0'
@@ -33,144 +38,155 @@ if (!ingameName) {
     updatePersistentConfigProperty('INGAME_NAME', ingameName)
 }
 
+let port = 36649
+
+// setup environment, put one bot at Vec3(-32.7, 71, -76)
+const bazaar: MyBot = createBot({
+    username: "Bazaar",
+    version: '1.8.9',
+    port: port,
+    host: 'localhost'
+})
+bazaar.loadPlugin(pathfinder)
+bazaar.once('spawn', async () => {
+    bazaar.pathfinder.setGoal(new goals.GoalBlock(-32.7,71, -77))
+})
+
+
 log(`Starting BAF v${version} for ${ingameName}`, 'info')
 const bot: MyBot = createBot({
     username: "Hello_world",
     version: '1.8.9',
-    port: 35345,
+    port: port,
     host: 'localhost'
 })
 
-injectSmoothLook(bot);
-bot.loadPlugin(pathfinder)
+
+bot.loadPlugin(loader);
 bot.loadPlugin(movement.plugin)
+bot.loadPlugin(createMouse());
 
-bot.setMaxListeners(0)
+// Coordinates of the Bazaar in Hypixel Skyblock (adjust as needed)
+let BAZAAR_COORDINATES = new Vec3(-32.7, 72.5, -76);
 
-bot.state = 'gracePeriod'
-createFastWindowClicker(bot._client)
+// Add the pathfinder plugin to the bot
+bot.loadPlugin(pathfinder);
 
-// Log packets
-//addLoggerToClientWriteFunction(bot._client)
-
-bot.on('kicked', (reason, _) => log(reason, 'warn'))
-bot.on('error', log)
-
-
-
-bot.once('login', async () => {
-    log(`Logged in as ${bot.username}`)
-    connectWebsocket()
-
-    bot.inventory.on('updateSlot', (slot, oldItem, newItem) => {
-        if (newItem)
-            console.log(`Slot ${slot} updated: ${removeMinecraftColorCodes(newItem?.name)}`);
-    })
-    const { Default } = bot.movement.goals
-    bot.movement.setGoal(Default)
-    // set control states
-    bot.setControlState("forward", true)
-    bot.setControlState("sprint", true)
-    bot.setControlState("jump", true)
-    const defaultMove = new Movements(bot)
-
-    defaultMove.allow1by1towers = false // Do not build 1x1 towers when going up
-    defaultMove.canDig = false // Disable breaking of blocks when pathing 
-    bot.pathfinder.setMovements(defaultMove)
-
-    bot.on("physicsTick", function tick() {
-        const entity = bot.nearestEntity(entity => entity.type === "player")
-        if (entity) {
-            // set the proximity target to the nearest entity
-            bot.movement.heuristic.get('proximity')
-                .target(entity.position)
-            // move towards the nearest entity
-            const yaw = bot.movement.getYaw(240, 15, 1)
-            const pitch = bot.movement.(240, 15, 1)
-            bot.movement.steer(yaw, pitch)
-            bot.movement.steer(yaw)
-        }
-    })
-
-    /*bot.pathfinder.setGoal(new goals.GoalBlock(-33.3, 71, -75.34), true)
-
-    console.log('Setting goal to -33.3, 71, -75.34')
-    bot.on('goal_reached', () => {
-        console.log('Reached goal block')
-        bot.pathfinder.setGoal(new goals.GoalBlock(-3, 70, -70), true)
-    })
-    await sleep(5000);
-
-    bot.pathfinder.setGoal(new goals.GoalBlock(-3, 70, -70), true)*/
-    bot._client.on('packet', async function (packet, packetMeta) {
-        if (packetMeta.name.includes('disconnect')) {
-            let wss = await getCurrentWebsocket()
-            wss.send(
-                JSON.stringify({
-                    type: 'report',
-                    data: `"${JSON.stringify(packet)}"`
-                })
-            )
-            printMcChatToConsole('§f[§4BAF§f]: §fYou were disconnected from the server...')
-            printMcChatToConsole('§f[§4BAF§f]: §f' + JSON.stringify(packet))
-        }
-    })
-})
-
+// Inject the smooth look plugin
 bot.once('spawn', async () => {
-    await bot.waitForChunksToLoad()
-    await sleep(2000)
-    bot.chat('/play sb')
-    bot.on('scoreboardTitleChanged', onScoreboardChanged)
-    registerIngameMessageHandler(bot)
-})
+    // start pressing the 'W' key to move forward
+    setTimeout(() => {
+        bot.clearControlStates();
+    }, 8000);
+    try {
+        bot.setControlState('forward', true);
+        await sleep(400);
+        bot.smoothLook.lookAt(new Vec3(-8.22, 71.1, -93.22), true, 0.99);
+        bot.setControlState('sprint', true);
+        await sleep(400);
+        bot.smoothLook.lookAt(new Vec3(-18.22, 72.1, -91.22), true, 0.99);
+        await sleep(400);
+        bot.smoothLook.lookAt(new Vec3(-20.22, 72.2, -83.21), true, 0.99);
+        await sleep(400);
 
-function smoothLook(bot, targetYaw, targetPitch, duration = 300, steps = 10) {
-    const currentYaw = bot.entity.yaw;
-    const currentPitch = bot.entity.pitch;
+        for (let id = 0; id < 2; id++) {
+            console.log('tilting');
+            bot.smoothLook.lookAt(BAZAAR_COORDINATES, true, 0.99);
+            console.log('sleeping');
+            await sleep(2000);
+            console.log('walking towards the Bazaar');
+        }
+        bot.clearControlStates();
+        bot.pathfinder.setGoal(new goals.GoalFollow(bazaar.entity, 1.5)); // Follow the Bazaar bot with a proximity of 1 block
+        await sleep(2000); // Wait for the bot to start moving
+        bot.pathfinder.setGoal(null);
+        if (bazaar.entity) {
+            // Randomize the look position a bit for more human-like behavior
+            const randomOffset = () => (Math.random() - 0.5) * 0.4; // +/-0.2 blocks
+            const targetPos = bazaar.entity.position.offset(
+                randomOffset(),
+                bazaar.entity.height / 2 + randomOffset() + 0.5,
+                randomOffset()
+            );
+            bot.smoothLook.lookAt(targetPos, true);
+            await sleep(500);
+            const { entity, cursorBlock, cursorBlockDiggable } = bot.mouse.getCursorState();
+            bot.leftClick();
+            console.log('Punched the Bazaar bot!');
+        } else {
+            console.log('Bazaar entity not found, cannot punch.');
+        }
+        console.log('Stopped moving forward');
+    } catch (error) {
+        bot.clearControlStates();
+        console.error('Error during bot movement:', error);
+    }
 
-    const yawStep = (targetYaw - currentYaw) / steps;
-    const pitchStep = (targetPitch - currentPitch) / steps;
 
-    let step = 0;
+    // Start moving to the Bazaar when the bot spawns
+    //moveToCoordinates(bot, BAZAAR_COORDINATES);
+});
 
-    const interval = setInterval(() => {
-        if (step >= steps) return clearInterval(interval);
 
-        const newYaw = currentYaw + yawStep * step;
-        const newPitch = currentPitch + pitchStep * step;
-
-        bot.look(newYaw, newPitch, true);
-        step++;
-    }, duration / steps);
-}
-
-function getYawAndPitchToTarget(bot: MyBot, target: Vec3): { yaw: number, pitch: number } {
-  const dx = target.x - bot.entity.position.x;
-  const dz = target.z - bot.entity.position.z;
-  const dy = target.y - bot.entity.position.y;
-
-  const yaw = Math.atan2(dz, dx); // Calculate the yaw
-  const pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)); // Calculate the pitch
-
-  return { yaw, pitch };
-}
-
-// Function to move and look towards a target position
+// Function to move the bot towards the target coordinates with dynamic look adjustment
 async function moveToCoordinates(bot: MyBot, target: Vec3): Promise<void> {
-  const { yaw, pitch } = getYawAndPitchToTarget(bot, target);
+    // Set pathfinding goal
+    var movements = new Movements(bot);
+    movements.allowFreeMotion = true; // Allow free motion for smoother movement
+    bot.pathfinder.setMovements(movements);
+    bot.pathfinder.setGoal(new goals.GoalNear(target.x, target.y, target.z, 1)); // GoalNear: 1 block proximity
 
-  // First, smoothly rotate the bot to face the target
-  await bot.smoothLook(yaw, pitch, 1, 10, 0.05, true); // Adjust jitterAmount and headBobbing as needed
+    // Track if we are adjusting the bot's view
+    let lastYaw = bot.entity.yaw;
+    let lastPitch = bot.entity.pitch;
 
-  // Then, move towards the target position
-  bot.pathfinder.setGoal(new bot.pathfinder.goals.GoalNear(target.x, target.y, target.z, 1)); // GoalNear: 1 block proximity
+    // Interval to adjust the bot's look every 500ms (not too frequent)
+    /* const updateInterval = setInterval(() => {
+       if (!bot.pathfinder.isMoving()) {
+         clearInterval(updateInterval); // Stop adjusting when bot stops moving
+         return;
+       }
+   
+       // Get the yaw and pitch needed to face the target
+       const { yaw, pitch } = getYawAndPitchToTarget(bot, target);
+   
+       // Only update yaw and pitch if there's a significant difference
+       if (Math.abs(lastYaw - yaw) > 0.01 || Math.abs(lastPitch - pitch) > 0.01) {
+         // Adjust the bot's look smoothly towards the target (with jitter and optional head bobbing)
+         bot.smoothLook(yaw, pitch, 30, 5, 0.01, false); // You can adjust the jitterAmount and headBobbing if needed
+         lastYaw = yaw;
+         lastPitch = pitch;
+       }
+     }, 50); // Update every 500ms */
 
-  // You can use bot.pathfinder to navigate if needed, or directly walk towards the target if it's a simple move
-  bot.on('goal_reached', () => {
-    console.log('Bot has reached the target position!');
-  });
+    // Log when the bot reaches the goal
+    bot.on('goal_reached', () => {
+        console.log('Bot has reached the Bazaar!');
+        if (BAZAAR_COORDINATES.x <= -32)
+            BAZAAR_COORDINATES.x = -3
+        else
+            BAZAAR_COORDINATES.x = -33
+        moveToCoordinates(bot, BAZAAR_COORDINATES); // Move back and forth between two points
+    });
 }
+
+// Handle bot errors (such as disconnection or errors)
+bot.on('error', (err) => {
+    console.error('Bot encountered an error:', err);
+});
+
+// Handle bot's disconnection (reconnect if necessary)
+bot.on('end', () => {
+    console.log('Bot disconnected. Attempting to reconnect...');
+    setTimeout(() => {
+        // bot.connect();
+    }, 5000); // Reconnect after 5 seconds
+});
+
+
+
+
+
 
 function connectWebsocket(url: string = getConfigProperty('WEBSOCKET_URL')) {
     log(`Called connectWebsocket for ${url}`)
